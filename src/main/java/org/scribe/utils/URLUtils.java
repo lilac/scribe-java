@@ -3,6 +3,7 @@ package org.scribe.utils;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.Map.Entry;
 
 /**
  * Utils to deal with URL and url-encodings
@@ -56,6 +57,70 @@ public class URLUtils
     return encodedString.toString().substring(1);
   }
 
+  public static ByteArrayOutputStream doFormDataEncode(Map<String, String> map, Map<String, String> files, String boundary) throws IOException {
+	  String charset = UTF_8;
+	  String CRLF = "\r\n"; // Line separator required by multipart/form-data.
+	  
+	  PrintWriter writer = null;
+	  ByteArrayOutputStream output = new ByteArrayOutputStream();
+	  try {
+		  writer = new PrintWriter(new OutputStreamWriter(output, charset), true); // true = autoFlush, important!
+
+		  for (Entry<String, String> v : map.entrySet()) {
+			  // Send normal param.
+			  writer.append("--" + boundary).append(CRLF);
+			  writer.append("Content-Disposition: form-data; name=\"" + v.getKey() + "\"").append(CRLF);
+			  writer.append("Content-Type: text/plain; charset=" + charset).append(CRLF);
+			  writer.append(CRLF);
+			  writer.append(v.getValue()).append(CRLF).flush();
+		  }
+		  // Send text file.
+		  /*
+		  writer.append("--" + boundary).append(CRLF);
+		  writer.append("Content-Disposition: form-data; name=\"textFile\"; filename=\"" + textFile.getName() + "\"").append(CRLF);
+		  writer.append("Content-Type: text/plain; charset=" + charset).append(CRLF);
+		  writer.append(CRLF).flush();
+		  BufferedReader reader = null;
+		  try {
+			  reader = new BufferedReader(new InputStreamReader(new FileInputStream(textFile), charset));
+			  for (String line; (line = reader.readLine()) != null;) {
+				  writer.append(line).append(CRLF);
+			  }
+		  } finally {
+			  if (reader != null) try { reader.close(); } catch (IOException logOrIgnore) {}
+		  }
+		  writer.flush();
+		  */
+		  for (Entry<String, String> file : files.entrySet()) {
+			  // Send binary file.
+			  String fn = file.getValue();
+			  writer.append("--" + boundary).append(CRLF);
+			  writer.append("Content-Disposition: form-data; name=\"" + file.getKey() + "\"; filename=\"" + fn + "\"").append(CRLF);
+			  writer.append("Content-Type: " + URLConnection.guessContentTypeFromName(fn)).append(CRLF);
+			  writer.append("Content-Transfer-Encoding: binary").append(CRLF);
+			  writer.append(CRLF).flush();
+			  InputStream input = null;
+			  try {
+				  input = new FileInputStream(fn);
+				  byte[] buffer = new byte[1024];
+				  for (int length = 0; (length = input.read(buffer)) > 0;) {
+					  output.write(buffer, 0, length);
+				  }
+				  output.flush(); // Important! Output cannot be closed. Close of writer will close output as well.
+			  } finally {
+				  if (input != null) {
+					  input.close();
+				  }
+			  }
+			  writer.append(CRLF).flush(); // CRLF is important! It indicates end of binary boundary.
+		  }
+		  // End of multipart/form-data.
+		  writer.append("--" + boundary + "--").append(CRLF);
+	  } finally {
+		  if (writer != null) writer.close();
+	  }
+	  return output;
+  }
   /**
    * Percent encodes a string
    * 

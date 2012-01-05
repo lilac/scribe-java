@@ -11,7 +11,6 @@ import java.util.concurrent.TimeUnit;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -42,6 +41,8 @@ class Request
   private boolean connectionKeepAlive = false;
   private Long connectTimeout = null;
   private Long readTimeout = null;
+  private String boundary;
+  private Map<String, String> files;
 
   /**
    * Creates a new Http Request
@@ -56,6 +57,7 @@ class Request
     this.querystringParams = new HashMap<String, String>();
     this.bodyParams = new HashMap<String, String>();
     this.headers = new HashMap<String, String>();
+    this.files = new HashMap<String, String>();
   }
 
   /**
@@ -148,6 +150,9 @@ class Request
     if (readTimeout != null)
     {
       connection.setReadTimeout(readTimeout.intValue());
+    }
+    if (boundary != null) {
+    	connection.setRequestProperty(CONTENT_TYPE, "multipart/form-data; boundary=" + boundary);
     }
     addHeaders(connection);
     if (verb.equals(Verb.PUT) || verb.equals(Verb.POST))
@@ -307,7 +312,21 @@ class Request
   byte[] getByteBodyContents()
   {
     if (bytePayload != null) return bytePayload;
-    String body = (payload != null) ? payload : URLUtils.formURLEncodeMap(bodyParams);
+    String body = null; 
+    if (payload != null) {
+    	body = payload;
+    } else if (files.isEmpty()) {
+    	body = URLUtils.formURLEncodeMap(bodyParams);
+    } else {
+    	byte res[] = null;
+    	try {
+			res = URLUtils.doFormDataEncode(bodyParams, files, boundary).toByteArray();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    	return res;
+    }
     try
     {
       return body.getBytes(getCharset());
@@ -405,5 +424,12 @@ class Request
   public String toString()
   {
     return String.format("@Request(%s %s)", getVerb(), getUrl());
+  }
+  
+  public void addFile(String name, String file) throws IOException {
+	  if (boundary == null) {
+		  boundary = Long.toHexString(System.currentTimeMillis()); // Just generate some unique random value.
+	  }
+	  files.put(name, file);
   }
 }
